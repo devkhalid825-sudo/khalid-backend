@@ -1,10 +1,33 @@
 const multer = require('multer');
 const sharp = require('sharp');
+const fs = require('fs');
+const path = require('path');
 const prisma = require('../config/prisma');
+const { uploadBufferToCloudinary } = require('../config/cloudinary');
 
-// Images are stored as bytes directly in the database (Media table) so they
-// survive backend redeploys — the app server's local disk is wiped on every
-// deploy, but the database is persistent.
+const MAP_FILE = path.resolve(__dirname, '../../cloudinary-media-map.json');
+
+// In-memory cache for fast Cloudinary URL lookups
+let mediaMap = {};
+const loadMap = () => {
+  if (fs.existsSync(MAP_FILE)) {
+    try {
+      mediaMap = JSON.parse(fs.readFileSync(MAP_FILE, 'utf-8'));
+    } catch {
+      mediaMap = {};
+    }
+  }
+};
+loadMap();
+
+const saveMap = () => {
+  try {
+    fs.writeFileSync(MAP_FILE, JSON.stringify(mediaMap, null, 2));
+  } catch (e) {
+    console.warn('Could not save media map file:', e.message);
+  }
+};
+
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
@@ -15,7 +38,7 @@ const fileFilter = (req, file, cb) => {
   else cb(new Error('Only image and video files are allowed'));
 };
 
-const upload = multer({ storage, fileFilter, limits: { fileSize: 20 * 1024 * 1024 } });
+const upload = multer({ storage, fileFilter, limits: { fileSize: 50 * 1024 * 1024 } });
 
 const uploadImage = async (req, res) => {
   try {
@@ -36,7 +59,7 @@ const uploadImage = async (req, res) => {
         dataBuffer = await sharp(file.buffer)
           .rotate() // Auto-orient based on EXIF
           .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
-          .webp({ quality: 80, effort: 4 })
+          .webp({ quality: 85, effort: 4 })
           .toBuffer();
         mimeType = 'image/webp';
         filename = filename.replace(/\.[^/.]+$/, '') + '.webp';
@@ -45,65 +68,88 @@ const uploadImage = async (req, res) => {
       }
     }
 
-    const media = await prisma.media.create({
-      data: {
-        filename,
-        mimeType,
-        folder,
-        data: dataBuffer,
-      },
-      select: { id: true },
-    });
+    // 1. Dual Safety: Save backup buffer in MySQL Database
+    let mediaId = null;
+    try {
+      const media = await prisma.media.create({
+        data: {
+          filename,
+          mimeType,
+          folder,
+          data: dataBuffer,
+        },
+        select: { id: true },
+      });
+      mediaId = media.id;
+    } catch (dbErr) {
+      console.warn('DB Media backup save warning:', dbErr.message);
+    }
 
-    const url = `/media/${media.id}`;
-    const buffer = Buffer.from(dataBuffer);
-    mediaCache.set(media.id, { mimeType, data: buffer });
-    console.log('Upload saved to database:', url, `(${dataBuffer.length} bytes, was ${file.size} bytes)`);
-    res.json({ url });
+    // 2. Upload to Cloudinary for instant global CDN delivery
+    let deliveryUrl = mediaId ? `/media/${mediaId}` : null;
+    try {
+      const cdnResult = await uploadBufferToCloudinary(
+        dataBuffer,
+        mediaId ? `media_${mediaId}_${filename}` : filename,
+        `elipse/${folder}`
+      );
+      if (cdnResult?.secure_url) {
+        deliveryUrl = cdnResult.secure_url;
+        if (mediaId) {
+          mediaMap[mediaId] = deliveryUrl;
+          saveMap();
+        }
+      }
+    } catch (cErr) {
+      console.warn('Cloudinary upload fallback to DB serving:', cErr.message);
+    }
+
+    console.log('Upload saved successfully:', deliveryUrl);
+    res.json({ url: deliveryUrl, mediaId });
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ message: 'Upload failed', error: error.message });
   }
 };
 
-// High-performance in-memory RAM cache (instant ~1ms response, 0 DB roundtrips)
-const mediaCache = new Map();
-const MAX_CACHE_ENTRIES = 500;
-
 const getMedia = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(404).send('Not found');
 
-    // 1. Check RAM Cache first
-    if (mediaCache.has(id)) {
-      const cached = mediaCache.get(id);
-      res.set('Content-Type', cached.mimeType);
+    // 1. If we have a Cloudinary CDN URL mapped, redirect permanently (cached by browser + edge CDN)
+    if (mediaMap[id]) {
       res.set('Cache-Control', 'public, max-age=31536000, immutable');
-      res.set('X-Cache', 'HIT');
-      return res.end(cached.data);
+      return res.redirect(301, mediaMap[id]);
     }
 
-    // 2. Fetch from Database if not in RAM
+    // 2. Fetch from Database if not in map
     const media = await prisma.media.findUnique({
       where: { id },
-      select: { mimeType: true, data: true }
+      select: { filename: true, mimeType: true, folder: true, data: true }
     });
 
     if (!media || !media.data) return res.status(404).send('Not found');
 
     const buffer = Buffer.from(media.data);
 
-    // Save to RAM cache
-    if (mediaCache.size >= MAX_CACHE_ENTRIES) {
-      const firstKey = mediaCache.keys().next().value;
-      mediaCache.delete(firstKey);
-    }
-    mediaCache.set(id, { mimeType: media.mimeType, data: buffer });
+    // 3. Upload to Cloudinary on-the-fly for subsequent visits
+    try {
+      uploadBufferToCloudinary(buffer, `media_${id}_${media.filename}`, `elipse/${media.folder || 'media'}`)
+        .then((cdnResult) => {
+          if (cdnResult?.secure_url) {
+            mediaMap[id] = cdnResult.secure_url;
+            saveMap();
+          }
+        })
+        .catch((err) => {
+          console.warn(`On-the-fly Cloudinary upload for #${id} failed:`, err.message);
+        });
+    } catch {}
 
+    // Serve current request directly from buffer with aggressive caching
     res.set('Content-Type', media.mimeType);
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
-    res.set('X-Cache', 'MISS');
     res.end(buffer);
   } catch (error) {
     res.status(500).json({ message: error.message });
