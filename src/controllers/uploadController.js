@@ -3,40 +3,22 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 const prisma = require('../config/prisma');
-const { uploadBufferToCloudinary } = require('../config/cloudinary');
 
-// ── Smart Disk Cache Directory ───────────────────────────────────────────────
+// ── Static Uploads Directory ──────────────────────────────────────────────────
+// Images are saved here and served directly via Express static / Nginx.
+// This folder is gitignored — it persists on the server across deploys.
 const DISK_CACHE_DIR = path.resolve(__dirname, '../../uploads/media');
 if (!fs.existsSync(DISK_CACHE_DIR)) {
   try {
     fs.mkdirSync(DISK_CACHE_DIR, { recursive: true });
   } catch (e) {
-    console.warn('Could not create disk cache directory:', e.message);
+    console.warn('Could not create uploads/media directory:', e.message);
   }
 }
 
-const MAP_FILE = path.resolve(__dirname, '../../cloudinary-media-map.json');
-
-// In-memory cache for fast Cloudinary URL lookups
-let mediaMap = {};
-const loadMap = () => {
-  if (fs.existsSync(MAP_FILE)) {
-    try {
-      mediaMap = JSON.parse(fs.readFileSync(MAP_FILE, 'utf-8'));
-    } catch {
-      mediaMap = {};
-    }
-  }
-};
-loadMap();
-
-const saveMap = () => {
-  try {
-    fs.writeFileSync(MAP_FILE, JSON.stringify(mediaMap, null, 2));
-  } catch (e) {
-    console.warn('Could not save media map file:', e.message);
-  }
-};
+// Base URL for generating direct static image URLs
+// Set BACKEND_URL in .env e.g. https://api.elipsestudio.com
+const BACKEND_URL = (process.env.BACKEND_URL || '').replace(/\/$/, '');
 
 const storage = multer.memoryStorage();
 
@@ -50,7 +32,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter, limits: { fileSize: 50 * 1024 * 1024 } });
 
-// Helper to determine file extension from mime type
+// Helper to get file extension from mime type
 const getExtFromMime = (mime) => {
   if (!mime) return '.webp';
   if (mime === 'image/jpeg' || mime === 'image/jpg') return '.jpg';
@@ -72,103 +54,97 @@ const uploadImage = async (req, res) => {
     let mimeType = file.mimetype;
     let filename = file.originalname;
 
-    // Auto-compress raster images (jpeg, jpg, png, webp, avif) to optimized WebP
+    // Auto-compress raster images to optimized WebP
     const isCompressibleImage = /jpeg|jpg|png|webp|avif/i.test(file.mimetype) ||
       /\.(jpe?g|png|webp|avif)$/i.test(file.originalname);
 
     if (isCompressibleImage) {
       try {
         dataBuffer = await sharp(file.buffer)
-          .rotate() // Auto-orient based on EXIF
+          .rotate()
           .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 85, effort: 4 })
           .toBuffer();
         mimeType = 'image/webp';
         filename = filename.replace(/\.[^/.]+$/, '') + '.webp';
       } catch (sharpError) {
-        console.warn('Sharp compression skipped due to error, keeping original:', sharpError.message);
+        console.warn('Sharp compression skipped:', sharpError.message);
       }
     }
 
-    // 1. Permanent Safety: Save backup buffer in MySQL Database
-    let mediaId = null;
+    const ext = getExtFromMime(mimeType);
+
+    // Step 1: Create DB record first to get the auto-increment ID
+    let mediaRecord = null;
     try {
-      const media = await prisma.media.create({
+      mediaRecord = await prisma.media.create({
         data: {
           filename,
           mimeType,
           folder,
-          data: dataBuffer,
+          data: dataBuffer, // Binary backup — kept for safety, never deleted
         },
         select: { id: true },
       });
-      mediaId = media.id;
     } catch (dbErr) {
-      console.warn('DB Media backup save warning:', dbErr.message);
+      console.error('DB Media save failed:', dbErr.message);
+      return res.status(500).json({ message: 'Upload failed: DB error', error: dbErr.message });
     }
 
-    // 2. Save directly to local Disk Cache for microsecond response (<5ms)
-    if (mediaId) {
-      try {
-        const diskPath = path.join(DISK_CACHE_DIR, `${mediaId}${getExtFromMime(mimeType)}`);
-        fs.writeFileSync(diskPath, dataBuffer);
-      } catch (diskErr) {
-        console.warn('Disk cache write warning:', diskErr.message);
-      }
+    const mediaId = mediaRecord.id;
+    const diskFilename = `${mediaId}${ext}`;
+    const diskPath = path.join(DISK_CACHE_DIR, diskFilename);
+
+    // Step 2: Save file to disk at uploads/media/{id}.webp
+    try {
+      fs.writeFileSync(diskPath, dataBuffer);
+    } catch (diskErr) {
+      console.warn('Disk write warning:', diskErr.message);
     }
 
-    // 3. Optional: Copy to Cloudinary CDN if credentials exist
-    let deliveryUrl = mediaId ? `/media/${mediaId}` : null;
-    if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-      try {
-        const cdnResult = await uploadBufferToCloudinary(
-          dataBuffer,
-          mediaId ? `media_${mediaId}_${filename}` : filename,
-          `elipse/${folder}`
-        );
-        if (cdnResult?.secure_url) {
-          deliveryUrl = cdnResult.secure_url;
-          if (mediaId) {
-            mediaMap[mediaId] = deliveryUrl;
-            saveMap();
-          }
-        }
-      } catch (cErr) {
-        console.warn('Cloudinary copy skipped, using disk cache:', cErr.message);
-      }
+    // Step 3: Build direct static URL and save it back to the DB record
+    // Frontend uses this URL directly — no Node.js/DB involved on load!
+    const directUrl = BACKEND_URL
+      ? `${BACKEND_URL}/uploads/media/${diskFilename}`
+      : `/uploads/media/${diskFilename}`;
+
+    try {
+      await prisma.media.update({
+        where: { id: mediaId },
+        data: { url: directUrl },
+      });
+    } catch (urlErr) {
+      console.warn('Could not save URL to DB:', urlErr.message);
     }
 
-    console.log('Upload saved successfully:', deliveryUrl);
-    res.json({ url: deliveryUrl, mediaId });
+    console.log(`✅ Upload saved: ${directUrl}`);
+    res.json({ url: directUrl, mediaId });
+
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ message: 'Upload failed', error: error.message });
   }
 };
 
+// GET /media/:id — Legacy route kept for backward compatibility with existing content
+// New uploads return direct /uploads/media/ URLs, so this route is only hit for old content.
 const getMedia = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(404).send('Not found');
 
-    // 1. Check Cloudinary CDN map (if present)
-    if (mediaMap[id]) {
-      res.set('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.redirect(301, mediaMap[id]);
-    }
-
-    // 2. Check Local Disk Cache (Instant ~5ms response, 0 DB roundtrips)
+    // 1. Check Local Disk first (~5ms, 0 DB roundtrips)
     const possibleExts = ['.webp', '.png', '.jpg', '.jpeg', '.svg', '.gif', '.avif'];
     for (const ext of possibleExts) {
       const diskPath = path.join(DISK_CACHE_DIR, `${id}${ext}`);
       if (fs.existsSync(diskPath)) {
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
-        res.set('X-Source', 'DISK-CACHE');
+        res.set('X-Source', 'DISK');
         return res.sendFile(diskPath);
       }
     }
 
-    // 3. If not on disk (e.g. after fresh redeploy), fetch from MySQL Database
+    // 2. Fallback: fetch from MySQL DB (happens only on fresh server / missing file)
     const media = await prisma.media.findUnique({
       where: { id },
       select: { filename: true, mimeType: true, folder: true, data: true }
@@ -178,31 +154,19 @@ const getMedia = async (req, res) => {
 
     const buffer = Buffer.from(media.data);
 
-    // 4. Auto-restore to Disk Cache so next visit is instant from disk
+    // Auto-restore to disk so next request is instant
     try {
       const diskPath = path.join(DISK_CACHE_DIR, `${id}${getExtFromMime(media.mimeType)}`);
       fs.writeFileSync(diskPath, buffer);
     } catch (saveErr) {
-      console.warn(`Could not cache Media #${id} to disk:`, saveErr.message);
+      console.warn(`Could not restore Media #${id} to disk:`, saveErr.message);
     }
 
-    // 5. Background copy to Cloudinary if configured
-    if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
-      uploadBufferToCloudinary(buffer, `media_${id}_${media.filename}`, `elipse/${media.folder || 'media'}`)
-        .then((cdnResult) => {
-          if (cdnResult?.secure_url) {
-            mediaMap[id] = cdnResult.secure_url;
-            saveMap();
-          }
-        })
-        .catch(() => {});
-    }
-
-    // Serve current request directly
     res.set('Content-Type', media.mimeType);
     res.set('Cache-Control', 'public, max-age=31536000, immutable');
-    res.set('X-Source', 'DB-RESTORED-TO-DISK');
+    res.set('X-Source', 'DB-RESTORED');
     res.end(buffer);
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

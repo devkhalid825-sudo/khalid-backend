@@ -104,7 +104,8 @@ model Media {
   filename  String
   mimeType  String
   folder    String   @default("blogs")
-  data      Bytes    @db.LongBlob
+  data      Bytes?   @db.LongBlob
+  url       String?  // Direct static file URL e.g. https://api.elipsestudio.com/uploads/media/59.webp
   createdAt DateTime @default(now())
 }
 
