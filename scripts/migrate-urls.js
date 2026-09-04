@@ -30,7 +30,9 @@ async function run() {
 
   let totalUpdated = 0;
 
-  // ── 1. Blogs ─────────────────────────────────────────────────────────────────
+
+
+
   console.log('📖 Checking Blogs...');
   const blogs = await prisma.blog.findMany({
     select: { id: true, title: true, image: true, image2: true, image3: true, image4: true },
@@ -103,9 +105,9 @@ async function run() {
       await Promise.all(
         chunk.map((m) => {
           const ext = m.mimeType === 'image/png' ? '.png'
-                    : m.mimeType === 'image/gif' ? '.gif'
-                    : m.mimeType === 'image/svg+xml' ? '.svg'
-                    : '.webp';
+            : m.mimeType === 'image/gif' ? '.gif'
+              : m.mimeType === 'image/svg+xml' ? '.svg'
+                : '.webp';
           const url = `${BACKEND_URL}/uploads/media/${m.id}${ext}`;
           return prisma.media.update({ where: { id: m.id }, data: { url } });
         })

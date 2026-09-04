@@ -172,4 +172,48 @@ const getMedia = async (req, res) => {
   }
 };
 
-module.exports = { upload, uploadImage, getMedia };
+// Handler for /uploads/media/:filename with DB auto-restore if missing from disk
+const getUploadsMedia = async (req, res, next) => {
+  try {
+    const filename = req.params.filename;
+    const diskPath = path.join(DISK_CACHE_DIR, filename);
+
+    // 1. If already on disk, serve it directly
+    if (fs.existsSync(diskPath)) {
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.sendFile(diskPath);
+    }
+
+    // 2. If not on disk (fresh redeploy), extract ID and restore from MySQL DB
+    const idMatch = filename.match(/^(\d+)/);
+    if (!idMatch) return next();
+
+    const id = parseInt(idMatch[1]);
+    const media = await prisma.media.findUnique({
+      where: { id },
+      select: { filename: true, mimeType: true, data: true }
+    });
+
+    if (!media || !media.data) return next();
+
+    const buffer = Buffer.from(media.data);
+
+    // Restore to disk cache
+    try {
+      fs.writeFileSync(diskPath, buffer);
+    } catch (saveErr) {
+      console.warn(`Could not restore ${filename} to disk:`, saveErr.message);
+    }
+
+    res.set('Content-Type', media.mimeType || 'image/webp');
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('X-Source', 'DB-RESTORED');
+    return res.end(buffer);
+  } catch (error) {
+    console.error('getUploadsMedia error:', error);
+    return next();
+  }
+};
+
+module.exports = { upload, uploadImage, getMedia, getUploadsMedia };
+
