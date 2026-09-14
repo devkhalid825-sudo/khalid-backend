@@ -4,9 +4,11 @@ const prisma = require('../config/prisma');
 const sendContactEmail = async (req, res) => {
   const { interest, pillars, budget, user_name, user_company, user_email, user_phone, user_source, message } = req.body;
 
-  if (!user_name || !user_email || !message) {
-    return res.status(400).json({ error: 'Name, email, and message are required.' });
-  }
+  // All fields are optional. The email/name fields are saved as empty strings
+  // if not provided so the DB NOT NULL columns stay satisfied.
+  const safeName = (user_name || '').trim();
+  const safeEmail = (user_email || '').trim();
+  const safeMessage = (message || '').trim();
 
   try {
     // 1. Save to Database using Prisma
@@ -15,36 +17,36 @@ const sendContactEmail = async (req, res) => {
         interest,
         pillars,
         budget,
-        user_name,
+        user_name: safeName,
         user_company,
-        user_email,
+        user_email: safeEmail,
         user_phone,
         user_source,
-        message,
+        message: safeMessage,
         status: 'Pending'
       }
     });
 
     // 2. Prepare Email
     const mailOptions = {
-      from: process.env.FROM_EMAIL || process.env.SMTP_USER || user_email,
+      from: process.env.FROM_EMAIL || process.env.SMTP_USER || 'noreply@elipsestudio.com',
       to: process.env.RECIPIENT_EMAIL,
-      replyTo: user_email,
-      subject: `New Inquiry: ${interest || 'General'} from ${user_name}`,
+      replyTo: safeEmail || process.env.FROM_EMAIL || process.env.SMTP_USER || 'noreply@elipsestudio.com',
+      subject: `New Inquiry: ${interest || 'General'} from ${safeName || 'Anonymous'}`,
       text: `
         NEW CONTACT INQUIRY
         -------------------
         Interest: ${interest || 'N/A'}
         Pillars: ${pillars || 'N/A'}
         Budget: ${budget || 'N/A'}
-        Name: ${user_name}
+        Name: ${safeName || 'N/A'}
         Company: ${user_company || 'N/A'}
-        Email: ${user_email}
+        Email: ${safeEmail || 'N/A'}
         Phone: ${user_phone || 'N/A'}
         Source: ${user_source || 'N/A'}
         
         Message:
-        ${message}
+        ${safeMessage || 'N/A'}
       `,
       html: `
         <!DOCTYPE html>
@@ -105,7 +107,7 @@ const sendContactEmail = async (req, res) => {
                         </tr>
                         <tr>
                           <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Name</td>
-                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${user_name}</td>
+                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${safeName || 'N/A'}</td>
                         </tr>
                         <tr>
                           <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Company</td>
@@ -113,7 +115,7 @@ const sendContactEmail = async (req, res) => {
                         </tr>
                         <tr>
                           <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Email</td>
-                          <td style="font-size: 15px; color: #007bff;"><a href="mailto:${user_email}" style="color: #007bff; text-decoration: none;">${user_email}</a></td>
+                          <td style="font-size: 15px; color: #007bff;"><a href="mailto:${safeEmail || 'noreply@elipsestudio.com'}" style="color: #007bff; text-decoration: none;">${safeEmail || 'N/A'}</a></td>
                         </tr>
                         <tr>
                           <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Phone</td>
@@ -131,7 +133,7 @@ const sendContactEmail = async (req, res) => {
                   <tr>
                     <td style="padding: 0 50px 40px 50px;">
                       <h3 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 600; color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.05em;">Message</h3>
-                      <div style="padding: 24px; background-color: #ffffff; border: 1px solid #eef2f1; border-radius: 16px; font-size: 16px; color: #444; line-height: 1.8; white-space: pre-wrap;">${message}</div>
+                      <div style="padding: 24px; background-color: #ffffff; border: 1px solid #eef2f1; border-radius: 16px; font-size: 16px; color: #444; line-height: 1.8; white-space: pre-wrap;">${safeMessage || 'N/A'}</div>
                     </td>
                   </tr>
 
