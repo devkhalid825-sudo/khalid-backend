@@ -96,6 +96,8 @@ const createMeetingRequest = async (req, res) => {
     const meeting = await prisma.meeting.create({
       data: {
         email,
+        title: req.body.title || "New Meeting Request",
+        description: req.body.description || "A user has requested to join from the email section.",
         date: new Date().toLocaleDateString(),
         time: new Date().toLocaleTimeString()
       }

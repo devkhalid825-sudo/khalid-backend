@@ -41,7 +41,7 @@ model Meeting {
   title       String   @default("New Meeting Request")
   date        String
   time        String
-  description String   @default("A user has requested to join from the email section.") @db.Text
+  description String   @db.Text
   status      String   @default("Pending")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -58,8 +58,8 @@ model Project {
   heroVideo         String?
   video             String?
   path              String   @unique
-  description       String   @default("") @db.Text
-  sections          String   @default("[]") @db.Text
+  description       String   @db.Text
+  sections          String   @db.Text
   position          Int      @default(0)
   client            String?
   service           String?
@@ -69,10 +69,10 @@ model Project {
   overviewText      String?  @db.Text
   challengeHeading  String?
   challengeText     String?  @db.Text
-  results           String?  @default("[]") @db.Text
-  processSteps      String?  @default("[]") @db.Text
-  galleryCategories String?  @default("[]") @db.Text
-  videoTabs         String?  @default("[]") @db.Text
+  results           String?  @db.Text
+  processSteps      String?  @db.Text
+  galleryCategories String?  @db.Text
+  videoTabs         String?  @db.Text
   ctaUrl            String?
   ctaText           String?
   createdAt         DateTime @default(now())
@@ -121,7 +121,7 @@ model CaseStudy {
   smallBanner       String?
   heroImage         String?
   heroVideo         String?
-  content           String   @default("") @db.Text
+  content           String   @db.Text
   client            String?
   service           String?
   category          String?
@@ -131,10 +131,10 @@ model CaseStudy {
   overviewText      String?  @db.Text
   challengeHeading  String?
   challengeText     String?  @db.Text
-  results           String?  @default("[]") @db.Text
-  processSteps      String?  @default("[]") @db.Text
-  galleryCategories String?  @default("[]") @db.Text
-  videoTabs         String?  @default("[]") @db.Text
+  results           String?  @db.Text
+  processSteps      String?  @db.Text
+  galleryCategories String?  @db.Text
+  videoTabs         String?  @db.Text
   ctaUrl            String?
   ctaText           String?
   videoUrl          String?
@@ -152,7 +152,7 @@ model Blog {
   slug            String   @unique
   excerpt         String   @db.Text
   content         String   @db.Text
-  sections        String   @default("[]") @db.Text
+  sections        String   @db.Text
   image           String
   image2          String?
   image3          String?
