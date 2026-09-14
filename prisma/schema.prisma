@@ -22,6 +22,8 @@ model User {
 model Contact {
   id           Int      @id @default(autoincrement())
   interest     String
+  pillars      String?
+  budget       String?
   user_name    String
   user_company String?
   user_email   String

@@ -2,7 +2,7 @@ const transporter = require('../config/emailConfig');
 const prisma = require('../config/prisma');
 
 const sendContactEmail = async (req, res) => {
-  const { interest, user_name, user_company, user_email, user_phone, user_source, message } = req.body;
+  const { interest, pillars, budget, user_name, user_company, user_email, user_phone, user_source, message } = req.body;
 
   if (!user_name || !user_email || !message) {
     return res.status(400).json({ error: 'Name, email, and message are required.' });
@@ -13,6 +13,8 @@ const sendContactEmail = async (req, res) => {
     const newContact = await prisma.contact.create({
       data: {
         interest,
+        pillars,
+        budget,
         user_name,
         user_company,
         user_email,
@@ -28,11 +30,13 @@ const sendContactEmail = async (req, res) => {
       from: process.env.FROM_EMAIL || process.env.SMTP_USER || user_email,
       to: process.env.RECIPIENT_EMAIL,
       replyTo: user_email,
-      subject: `New Inquiry: ${interest} from ${user_name}`,
+      subject: `New Inquiry: ${interest || 'General'} from ${user_name}`,
       text: `
         NEW CONTACT INQUIRY
         -------------------
-        Interest: ${interest}
+        Interest: ${interest || 'N/A'}
+        Pillars: ${pillars || 'N/A'}
+        Budget: ${budget || 'N/A'}
         Name: ${user_name}
         Company: ${user_company || 'N/A'}
         Email: ${user_email}
@@ -89,7 +93,15 @@ const sendContactEmail = async (req, res) => {
                       <table width="100%" border="0" cellspacing="0" cellpadding="12" style="background-color: #fbfcfc; border-radius: 16px; border: 1px solid #f0f3f2;">
                         <tr>
                           <td width="35%" style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Interest</td>
-                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${interest}</td>
+                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${interest || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Pillars</td>
+                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${pillars || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Budget</td>
+                          <td style="font-size: 15px; color: #1a1a1a; font-weight: 500;">${budget || 'N/A'}</td>
                         </tr>
                         <tr>
                           <td style="padding-left: 20px; font-size: 13px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">Name</td>
