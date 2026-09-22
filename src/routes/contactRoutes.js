@@ -7,9 +7,10 @@ const {
   deleteContact 
 } = require('../controllers/contactController');
 const { protect } = require('../middleware/authMiddleware');
+const { contactRateLimiter } = require('../middleware/rateLimiter');
 
-// Public route
-router.post('/contact', sendContactEmail);
+// Public route with rate limiting (max 5 requests per 15 minutes)
+router.post('/contact', contactRateLimiter, sendContactEmail);
 
 // Protected Admin routes
 router.get('/', protect, getContacts);

@@ -1,14 +1,77 @@
 const transporter = require('../config/emailConfig');
 const prisma = require('../config/prisma');
 
-const sendContactEmail = async (req, res) => {
-  const { interest, pillars, budget, user_name, user_company, user_email, user_phone, user_source, message } = req.body;
+const verifyRecaptcha = async (token, remoteIp) => {
+  const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secretKey) {
+    // If no secret key is configured, bypass check (e.g. local dev without keys)
+    return { success: true };
+  }
 
-  // All fields are optional. The email/name fields are saved as empty strings
-  // if not provided so the DB NOT NULL columns stay satisfied.
-  const safeName = (user_name || '').trim();
-  const safeEmail = (user_email || '').trim();
-  const safeMessage = (message || '').trim();
+  if (!token) {
+    return { success: false, error: 'reCAPTCHA token is missing.' };
+  }
+
+  try {
+    const params = new URLSearchParams({
+      secret: secretKey,
+      response: token,
+    });
+    if (remoteIp) params.append('remoteip', remoteIp);
+
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.error('reCAPTCHA siteverify error:', err);
+    return { success: false, error: 'Failed to verify reCAPTCHA with Google servers.' };
+  }
+};
+
+const sendContactEmail = async (req, res) => {
+  const {
+    interest,
+    pillars,
+    budget,
+    user_name,
+    user_company,
+    user_email,
+    user_phone,
+    user_source,
+    message,
+    recaptchaToken,
+    website_hp, // Honeypot trap field
+  } = req.body;
+
+  // 1. Honeypot Bot Trap: if a bot filled this invisible field, pretend success and exit silently
+  if (website_hp) {
+    console.warn('[Security] Honeypot triggered by bot submission.');
+    return res.status(200).json({ success: 'Message sent successfully!' });
+  }
+
+  // 2. Google reCAPTCHA Verification
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress;
+  const captchaResult = await verifyRecaptcha(recaptchaToken, clientIp);
+  if (!captchaResult.success) {
+    return res.status(400).json({
+      error: 'reCAPTCHA verification failed. Please try ticking the checkbox again.',
+      details: captchaResult['error-codes'] || captchaResult.error,
+    });
+  }
+
+  // 3. Input Sanitization & Bounds Checking
+  const safeName = (user_name || '').trim().slice(0, 120);
+  const safeEmail = (user_email || '').trim().slice(0, 150);
+  const safeCompany = (user_company || '').trim().slice(0, 150);
+  const safePhone = (user_phone || '').trim().slice(0, 50);
+  const safeMessage = (message || '').trim().slice(0, 5000);
 
   try {
     // 1. Save to Database using Prisma

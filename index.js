@@ -97,7 +97,7 @@ const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 if (allowedOrigins.length === 0) {
   console.warn(
     '⚠️  ALLOWED_ORIGINS is not configured — CORS is wide open (origin: true). ' +
-      'Add it to .env / Hostinger env vars to lock down origins.'
+    'Add it to .env / Hostinger env vars to lock down origins.'
   );
 }
 

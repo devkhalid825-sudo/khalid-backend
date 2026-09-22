@@ -44,10 +44,10 @@ const deleteImageFiles = (record) => {
     sections.forEach((s) => {
       if (s.image) paths.push(s.image.replace(/^https?:\/\/[^/]+/, ''));
     });
-  } catch {}
+  } catch { }
   paths.forEach((filePath) => {
     const absPath = path.join(uploadsDir, filePath.replace(/^\/uploads\//, ''));
-    try { fs.unlinkSync(absPath); } catch {}
+    try { fs.unlinkSync(absPath); } catch { }
   });
 };
 
