@@ -155,13 +155,25 @@ const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
-    const cleanedData = {
-      ...data,
-      image: normalize(data.image),
-      heroImage: normalize(data.heroImage),
-      heroVideo: normalize(data.heroVideo),
-      video: normalize(data.video),
-    };
+    const allowedFields = [
+      'title', 'metaTitle', 'metaDescription', 'category', 'image',
+      'heroImage', 'heroVideo', 'video', 'path', 'description', 'sections',
+      'position', 'client', 'service', 'duration', 'deliverables',
+      'overviewHeading', 'overviewText', 'challengeHeading', 'challengeText',
+      'results', 'processSteps', 'galleryCategories', 'videoTabs',
+      'ctaUrl', 'ctaText'
+    ];
+    const cleanedData = {};
+    for (const key of allowedFields) {
+      if (data[key] !== undefined) {
+        cleanedData[key] = data[key];
+      }
+    }
+    if (cleanedData.image !== undefined) cleanedData.image = normalize(cleanedData.image);
+    if (cleanedData.heroImage !== undefined) cleanedData.heroImage = normalize(cleanedData.heroImage);
+    if (cleanedData.heroVideo !== undefined) cleanedData.heroVideo = normalize(cleanedData.heroVideo);
+    if (cleanedData.video !== undefined) cleanedData.video = normalize(cleanedData.video);
+
     const project = await prisma.project.update({
       where: { id: parseInt(id) },
       data: cleanedData,
