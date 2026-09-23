@@ -26,6 +26,17 @@ const getBackendUrl = () => {
   return url.replace(/\/+$/, '');
 };
 
+const normalize = (val) => {
+  if (!val || typeof val !== 'string') return val;
+  const s = val.trim();
+  if (/youtube\.com|youtu\.be/i.test(s)) return s;
+  const ownOrigin = /^https?:\/\/(?:api\.elipsestudio\.com|elipsestudio\.com|localhost(?::\d+)?)(?:\/|$)/i;
+  if (ownOrigin.test(s)) {
+    return s.replace(ownOrigin, '/');
+  }
+  return s;
+};
+
 const buildUrl = (val) => {
   if (!val || typeof val !== 'string') return val;
   const s = val.trim();
@@ -103,11 +114,6 @@ const getProjectByPath = async (req, res) => {
 const createProject = async (req, res) => {
   try {
     const { title, metaTitle, metaDescription, category, image, heroImage, heroVideo, video, path, description, sections, client, service, duration, deliverables, overviewHeading, overviewText, challengeHeading, challengeText, results, processSteps, galleryCategories, videoTabs, ctaUrl, ctaText } = req.body;
-    const normalize = (val) => {
-      if (!val) return val;
-      if (/youtube\.com|youtu\.be/i.test(val)) return val;
-      return val.replace(/^https?:\/\/[^/]+/, '');
-    };
     await prisma.project.updateMany({ data: { position: { increment: 1 } } });
     const project = await prisma.project.create({
       data: {
@@ -149,11 +155,6 @@ const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
     const data = req.body;
-    const normalize = (val) => {
-      if (!val) return val;
-      if (/youtube\.com|youtu\.be/i.test(val)) return val;
-      return val.replace(/^https?:\/\/[^/]+/, '');
-    };
     const cleanedData = {
       ...data,
       image: normalize(data.image),

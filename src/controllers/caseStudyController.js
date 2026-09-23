@@ -42,9 +42,14 @@ const buildUrl = (val) => {
 };
 
 const normalize = (val) => {
-  if (!val) return val;
-  if (/youtube\.com|youtu\.be/i.test(val)) return val;
-  return val.replace(/^https?:\/\/[^/]+/, '');
+  if (!val || typeof val !== 'string') return val;
+  const s = val.trim();
+  if (/youtube\.com|youtu\.be/i.test(s)) return s;
+  const ownOrigin = /^https?:\/\/(?:api\.elipsestudio\.com|elipsestudio\.com|localhost(?::\d+)?)(?:\/|$)/i;
+  if (ownOrigin.test(s)) {
+    return s.replace(ownOrigin, '/');
+  }
+  return s;
 };
 
 const withUrls = (caseStudy) => ({

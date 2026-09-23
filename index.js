@@ -278,11 +278,11 @@ app.get('/blog/:slug', async (req, res, next) => {
     const blog = await prisma.blog.findUnique({ where: { slug: req.params.slug } });
 
     const siteUrl = getSiteUrl(req);
-    const baseUrl = (process.env.VITE_BACKEND_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
     const buildUrl = (val) => {
       if (!val) return `${siteUrl}${appConfig.ogImagePath}`;
+      const uploadMediaMatch = String(val).match(/(?:\/uploads\/media\/)(\d+)\.[a-zA-Z0-9]+$/);
+      if (uploadMediaMatch) return `https://api.elipsestudio.com/media/${uploadMediaMatch[1]}`;
       if (val.startsWith('http')) {
-        // Replace any staging CDN domain with production site URL
         if (val.includes('mediumseagreen-crocodile-699024.hostingersite.com')) {
           return val.replace('https://mediumseagreen-crocodile-699024.hostingersite.com', siteUrl);
         }
@@ -351,11 +351,11 @@ app.get('/project/:path(*)', async (req, res, next) => {
     const project = await prisma.project.findUnique({ where: { path: fullPath } });
 
     const siteUrl = getSiteUrl(req);
-    const baseUrl = (process.env.VITE_BACKEND_URL || `http://localhost:${PORT}`).replace(/\/+$/, '');
     const buildUrl = (val) => {
       if (!val) return `${siteUrl}${appConfig.ogImagePath}`;
+      const uploadMediaMatch = String(val).match(/(?:\/uploads\/media\/)(\d+)\.[a-zA-Z0-9]+$/);
+      if (uploadMediaMatch) return `https://api.elipsestudio.com/media/${uploadMediaMatch[1]}`;
       if (val.startsWith('http')) {
-        // Replace any staging CDN domain with production site URL
         if (val.includes('mediumseagreen-crocodile-699024.hostingersite.com')) {
           return val.replace('https://mediumseagreen-crocodile-699024.hostingersite.com', siteUrl);
         }
