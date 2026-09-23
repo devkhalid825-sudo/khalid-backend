@@ -18,7 +18,10 @@ if (!fs.existsSync(DISK_CACHE_DIR)) {
 
 // Base URL for generating direct static image URLs
 // Set BACKEND_URL in .env e.g. https://api.elipsestudio.com
-const BACKEND_URL = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+const rawBackendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+const BACKEND_URL = rawBackendUrl.includes('elipsestudio.com') && !rawBackendUrl.includes('api.elipsestudio.com')
+  ? 'https://api.elipsestudio.com'
+  : rawBackendUrl;
 
 const storage = multer.memoryStorage();
 
@@ -102,11 +105,10 @@ const uploadImage = async (req, res) => {
       console.warn('Disk write warning:', diskErr.message);
     }
 
-    // Step 3: Build direct static URL and save it back to the DB record
-    // Frontend uses this URL directly — no Node.js/DB involved on load!
+    // Step 3: Build clean direct /media/:id URL and save it back to the DB record
     const directUrl = BACKEND_URL
-      ? `${BACKEND_URL}/uploads/media/${diskFilename}`
-      : `/uploads/media/${diskFilename}`;
+      ? `${BACKEND_URL}/media/${mediaId}`
+      : `/media/${mediaId}`;
 
     try {
       await prisma.media.update({

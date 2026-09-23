@@ -4,21 +4,41 @@ const path = require('path');
 
 const uploadsDir = path.resolve(__dirname, '../../uploads');
 
-// Always build image URLs relative to the production frontend (elipsestudio.com)
-// so they are served through the Next.js /uploads/* proxy rewrite.
-const getBaseUrl = () => {
-  return (process.env.ELIPSE_SITE_URL || process.env.SITE_URL || 'https://elipsestudio.com').replace(/\/+$/, '');
+const getBackendUrl = () => {
+  const url = process.env.BACKEND_URL || process.env.API_URL || 'https://api.elipsestudio.com';
+  return url.replace(/\/+$/, '');
 };
 
 const buildUrl = (val) => {
-  if (!val) return val;
-  if (val.startsWith('http')) {
-    const pathMatch = val.match(/^https?:\/\/[^/]+(\/.*)$/);
-    const p = pathMatch ? pathMatch[1] : val;
-    return `${getBaseUrl()}${p}`;
+  if (!val || typeof val !== 'string') return val;
+  const s = val.trim();
+  if (s.startsWith('data:') || s.startsWith('blob:')) return s;
+
+  // Auto-convert any legacy /uploads/media/{id}.ext into clean /media/{id}
+  const uploadMediaMatch = s.match(/(?:\/uploads\/media\/)(\d+)\.[a-zA-Z0-9]+$/);
+  if (uploadMediaMatch) {
+    return `${getBackendUrl()}/media/${uploadMediaMatch[1]}`;
   }
-  const p = val.startsWith('/') ? val : `/${val}`;
-  return `${getBaseUrl()}${p}`;
+
+  // 1. Keep existing direct api.elipsestudio.com URLs intact (e.g. https://api.elipsestudio.com/media/32)
+  if (s.startsWith('https://api.elipsestudio.com') || s.startsWith('http://api.elipsestudio.com')) {
+    return s;
+  }
+
+  // 2. Fix URLs saved with elipsestudio.com (frontend domain) pointing to backend paths /uploads/ or /media/
+  if (s.includes('elipsestudio.com/uploads/') || s.includes('elipsestudio.com/media/')) {
+    const match = s.match(/(\/(?:uploads|media)\/.*)$/);
+    if (match) return `${getBackendUrl()}${match[1]}`;
+  }
+
+  // 3. Keep external URLs (Unsplash, Cloudinary, etc.) completely intact
+  if (s.startsWith('http://') || s.startsWith('https://')) {
+    return s;
+  }
+
+  // 4. Relative paths (e.g. /media/32) -> prepend backend URL
+  const p = s.startsWith('/') ? s : `/${s}`;
+  return `${getBackendUrl()}${p}`;
 };
 
 const normalize = (val) => {

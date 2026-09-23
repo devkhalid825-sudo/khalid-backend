@@ -136,8 +136,8 @@ app.options('*', cors(corsOptions));
 // back into req.body, so controllers keep receiving req.body as the
 // original JSON object. application/json is still supported for
 // non-Hostinger deployments and external API clients.
-app.use(express.json());
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use((req, res, next) => {
   const isUrlEncoded = (req.headers['content-type'] || '').includes('application/x-www-form-urlencoded');
   if (isUrlEncoded && typeof req.body?.data === 'string') {
