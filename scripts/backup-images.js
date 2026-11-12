@@ -5,7 +5,7 @@
  * elipse-backend/uploads-backup/ folder mein save karta hai.
  *
  * RUN KARO:
- *   node backup-images.js
+ *   node scripts/backup-images.js
  *
  * Requirements:
  *   node 18+ (built-in fetch available)
@@ -20,7 +20,7 @@ const http = require('http');
 // ── Config ────────────────────────────────────────────────────────────────────
 const BACKEND_API = 'https://mediumseagreen-crocodile-699024.hostingersite.com/api';
 const BACKEND_BASE = 'https://mediumseagreen-crocodile-699024.hostingersite.com';
-const BACKUP_DIR = path.resolve(__dirname, 'uploads-backup');
+const BACKUP_DIR = path.resolve(__dirname, '..', 'uploads-backup');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function mkdirp(dir) {

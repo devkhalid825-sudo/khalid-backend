@@ -18,7 +18,7 @@ echo ============================================
 echo  Starting backend...
 echo  URL: http://localhost:5005/status
 echo ============================================
-cd /d "%~dp0"
+cd /d "%~dp0.."
 start "" cmd /k "npm run dev"
 timeout /t 6 /nobreak >nul
 echo.

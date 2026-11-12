@@ -44,8 +44,14 @@ const getExtFromMime = (mime) => {
   if (mime === 'image/gif') return '.gif';
   if (mime === 'image/svg+xml') return '.svg';
   if (mime === 'image/avif') return '.avif';
+  if (mime === 'video/mp4') return '.mp4';
+  if (mime === 'video/webm') return '.webm';
+  if (mime === 'video/quicktime') return '.mov';
   return '.webp';
 };
+
+// Every extension a stored media file can have on disk (images + videos).
+const MEDIA_EXTS = ['.webp', '.png', '.jpg', '.jpeg', '.svg', '.gif', '.avif', '.mp4', '.webm', '.mov'];
 
 const uploadImage = async (req, res) => {
   try {
@@ -136,8 +142,8 @@ const getMedia = async (req, res) => {
     if (isNaN(id)) return res.status(404).send('Not found');
 
     // 1. Check Local Disk first (~5ms, 0 DB roundtrips)
-    const possibleExts = ['.webp', '.png', '.jpg', '.jpeg', '.svg', '.gif', '.avif'];
-    for (const ext of possibleExts) {
+    // sendFile sets Content-Type from the extension and supports Range requests (video seeking).
+    for (const ext of MEDIA_EXTS) {
       const diskPath = path.join(DISK_CACHE_DIR, `${id}${ext}`);
       if (fs.existsSync(diskPath)) {
         res.set('Cache-Control', 'public, max-age=31536000, immutable');
